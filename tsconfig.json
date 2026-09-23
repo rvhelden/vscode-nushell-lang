@@ -10,6 +10,6 @@
     "composite": true
   },
   "include": ["client/src"],
-  "exclude": ["node_modules", ".vscode-test"],
+  "exclude": ["node_modules", ".vscode-test", "client/src/**/webview/**"],
   "references": [{ "path": "./client" }]
 }

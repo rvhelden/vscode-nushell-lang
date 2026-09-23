@@ -21,7 +21,11 @@
   "icon": "assets/nushell.ico",
   "categories": [
     "Programming Languages",
-    "Snippets"
+    "Snippets",
+    "Debuggers"
+  ],
+  "activationEvents": [
+    "onDebugResolve:nushell"
   ],
   "main": "out/extension.js",
   "contributes": {
@@ -120,7 +124,7 @@
           "scope": "resource",
           "type": "string",
           "default": "nu",
-          "description": "The path to the nushell executable."
+          "description": "Path to the `nu` executable used by the language server, the terminal profile and the debugger. When left at `nu`, the extension uses `nu` from PATH, and otherwise a copy it downloaded (see `nushellLanguageServer.autoDownload`)."
         },
         "nushellLanguageServer.maxNushellInvocationTime": {
           "scope": "resource",
@@ -135,6 +139,37 @@
           },
           "description": "The directories to include in the nushell environment.",
           "scope": "window"
+        },
+        "nushellLanguageServer.autoDownload": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "ask",
+            "always",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Ask before downloading Nushell when it is not configured or on PATH.",
+            "Download the latest Nushell release without asking.",
+            "Never download Nushell."
+          ],
+          "default": "ask",
+          "description": "Whether to download the latest Nushell release for your platform when `nu` is not configured and not found on PATH."
+        },
+        "nushellDebugger.restartOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hot restart: automatically restart the active Nushell debug session whenever a .nu file is saved. The script re-runs from disk with breakpoints intact (state resets; side effects run again)."
+        },
+        "nushellDebugger.timeTravel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Time-travel debugging: record execution history so Step Back / Reverse Continue can revisit any line the script ran through (not just breakpoints). Records a lightweight state snapshot per line; turn off to record only at stops if a very hot loop makes recording costly."
+        },
+        "nushellDebugger.timeTravelMaxSteps": {
+          "type": "number",
+          "default": 10000,
+          "description": "Maximum number of recorded steps kept for time travel (a ring buffer). Older steps are dropped once the limit is reached, so Reverse can go back at most this many steps."
         }
       }
     },
@@ -150,18 +185,128 @@
       {
         "command": "nushell.startLanguageServer",
         "title": "Nushell: Start Language Server"
+      },
+      {
+        "command": "nushell-debug.showIr",
+        "title": "Nushell Debug: Show IR"
+      },
+      {
+        "command": "nushell-debug.visualizeVariable",
+        "title": "Visualize"
+      },
+      {
+        "command": "nushell.downloadNushell",
+        "title": "Nushell: Download / Update Nushell"
       }
-    ]
+    ],
+    "breakpoints": [
+      {
+        "language": "nushell"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "nushell",
+        "label": "Nushell Debug",
+        "languages": [
+          "nushell"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to the .nu script to debug.",
+                "default": "${file}"
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory ($env.PWD) for the script.",
+                "default": "${workspaceFolder}"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Arguments passed to the entry point (`main`, or `entryPoint`). When omitted and the entry point has required parameters, you are prompted for them at launch.",
+                "default": []
+              },
+              "entryPoint": {
+                "type": "string",
+                "description": "For a script without a `main`: the command to call after the script has loaded. When omitted you are asked to pick one (or to run the script top-to-bottom)."
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Pause on the first instruction.",
+                "default": false
+              },
+              "timeTravel": {
+                "type": "boolean",
+                "description": "Record execution history for Step Back / Reverse Continue. Defaults to the `nushellDebugger.timeTravel` setting."
+              },
+              "timeTravelMaxSteps": {
+                "type": "number",
+                "description": "Maximum number of recorded steps kept for time travel. Defaults to the `nushellDebugger.timeTravelMaxSteps` setting."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "nushell",
+            "request": "launch",
+            "name": "Debug nu script",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Nushell: Launch current file",
+            "body": {
+              "type": "nushell",
+              "request": "launch",
+              "name": "Debug ${1:script}.nu",
+              "program": "^\"\\${file}\"",
+              "stopOnEntry": false
+            }
+          }
+        ]
+      }
+    ],
+    "menus": {
+      "debug/variables/context": [
+        {
+          "command": "nushell-debug.visualizeVariable",
+          "when": "debugType == 'nushell'"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "nushell-debug.visualizeVariable",
+          "when": "false"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run lint && npm run compile",
     "esbuild-base": "npx esbuild client/src/extension.ts --bundle --outdir=out --external:vscode --format=cjs --platform=node",
     "esbuild": "npm run esbuild-base -- --sourcemap --minify",
-    "compile": "npm run esbuild",
+    "esbuild-webview": "npx esbuild client/src/debug/visualize/webview/main.ts --bundle --format=iife --target=es2022 --minify --outfile=out/debug/visualize-panel.webview.js",
+    "copy-assets": "node ./scripts/copy-debug-assets.js",
+    "compile": "npm run esbuild && npm run esbuild-webview && npm run copy-assets",
     "install": "cd client && npm install && cd ..",
-    "watch": "npm run esbuild-base -- --sourcemap --watch",
-    "lint": "npx eslint ./client/src/extension.ts",
+    "watch": "npm run copy-assets && npm run esbuild-webview && npm run esbuild-base -- --sourcemap --watch",
+    "lint": "npx eslint \"./client/src/**/*.ts\"",
     "test": "node ./scripts/e2e.js",
+    "test:unit": "node -e \"require('fs').rmSync('client/out-unit',{recursive:true,force:true})\" && tsc -p client/tsconfig.unit.json && node --test \"client/out-unit/**/*.test.js\"",
+    "typecheck:webview": "tsc -p client/tsconfig.webview.json",
     "test:grammar": "vscode-tmgrammar-snap tests/cases/*",
     "fmt": "prettier . --write"
   },
