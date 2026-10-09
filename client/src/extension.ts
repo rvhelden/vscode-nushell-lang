@@ -17,6 +17,9 @@ import {
   RevealOutputChannelOn,
 } from 'vscode-languageclient/node';
 
+import { registerDebugger } from './debug/register';
+import { ensureNushell } from './nushell/resolve';
+
 const EXTENSION_ID = 'TheNuProjectContributors.vscode-nushell-lang';
 const CONFIG_SECTION = 'nushellLanguageServer';
 
