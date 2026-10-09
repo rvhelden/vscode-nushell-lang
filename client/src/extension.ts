@@ -3,10 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
-import * as os from 'os';
-import * as path from 'path';
 import * as vscode from 'vscode';
-import * as which from 'which';
 import { window, type OutputChannel } from 'vscode';
 
 import {
@@ -26,55 +23,6 @@ const CONFIG_SECTION = 'nushellLanguageServer';
 let client: LanguageClient | undefined;
 let fileWatcher: vscode.FileSystemWatcher | undefined;
 let outputChannel: OutputChannel | undefined; // Single output channel for server logs and trace
-
-function expandHome(p: string): string {
-  if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) {
-    return path.join(os.homedir(), p.slice(1));
-  }
-  return p;
-}
-
-/**
- * Resolve the nushell executable: the configured path if it exists,
- * otherwise `nu` on PATH. Returns null when nothing usable is found.
- */
-function findNushellExecutable(): string | null {
-  try {
-    const config = vscode.workspace.getConfiguration(CONFIG_SECTION, null);
-    const configuredPath = config
-      .get<string>('nushellExecutablePath', 'nu')
-      .trim();
-
-    if (configuredPath && configuredPath !== 'nu') {
-      const found = which.sync(expandHome(configuredPath), { nothrow: true });
-      if (found) {
-        return found;
-      }
-      void vscode.window.showWarningMessage(
-        `Configured nushell executable '${configuredPath}' was not found. Falling back to 'nu' on PATH.`,
-      );
-    }
-
-    return which.sync('nu', { nothrow: true });
-  } catch {
-    return null;
-  }
-}
-
-function showNushellNotFound(): void {
-  void vscode.window
-    .showErrorMessage(
-      'Nushell executable not found. Install Nushell or set "nushellLanguageServer.nushellExecutablePath", then run "Nushell: Start Language Server".',
-      'Install from website',
-    )
-    .then((selection) => {
-      if (selection) {
-        void vscode.env.openExternal(
-          vscode.Uri.parse('https://www.nushell.sh/'),
-        );
-      }
-    });
-}
 
 function getOutputChannel(context: vscode.ExtensionContext): OutputChannel {
   if (!outputChannel) {
@@ -116,19 +64,14 @@ function applyTraceFromConfig(): void {
  * Start `nu --lsp` and connect the language client to it.
  * Returns true when a new client was started.
  */
-function startLanguageServer(context: vscode.ExtensionContext): boolean {
+function startLanguageServer(
+  context: vscode.ExtensionContext,
+  nushellPath: string,
+): boolean {
   if (client) {
     void vscode.window.showInformationMessage(
       'Nushell Language Server is already running.',
     );
-    return false;
-  }
-
-  // Resolve the executable on every start so a changed setting or a fresh
-  // install is picked up without reloading the window.
-  const nushellPath = findNushellExecutable();
-  if (!nushellPath) {
-    showNushellNotFound();
     return false;
   }
 
@@ -217,20 +160,37 @@ async function stopLanguageServer(): Promise<boolean> {
   return true;
 }
 
+async function restartLanguageServer(
+  context: vscode.ExtensionContext,
+  nushellPath: string,
+): Promise<void> {
+  try {
+    await stopLanguageServer();
+  } catch (error) {
+    console.error('Failed to stop Nushell Language Server:', error);
+  }
+  startLanguageServer(context, nushellPath);
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log(`Activating ${EXTENSION_ID}.`);
   getOutputChannel(context);
 
+  // The language server, the terminal profile and the debugger share one `nu`,
+  // resolved as: nushellExecutablePath setting -> PATH.
+  // It is resolved on every use so a changed setting or a fresh install is
+  // picked up without reloading the window.
+  const nushell = async () => ensureNushell();
+
   context.subscriptions.push(
     vscode.window.registerTerminalProfileProvider('nushell_default', {
-      provideTerminalProfile(
+      async provideTerminalProfile(
         token: vscode.CancellationToken,
-      ): vscode.ProviderResult<vscode.TerminalProfile> {
+      ): Promise<vscode.TerminalProfile | undefined> {
         // Consume token to satisfy no-unused-vars without changing behavior
         void token;
-        const nushellPath = findNushellExecutable();
+        const nushellPath = await nushell();
         if (!nushellPath) {
-          showNushellNotFound();
           return undefined;
         }
 
@@ -248,11 +208,21 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // React to trace level changes for the lifetime of the extension
+  // The debugger resolves `nu` itself when a session starts
+  context.subscriptions.push(...registerDebugger(nushell));
+
+  // React to trace level changes for the lifetime of the extension, and
+  // restart the language server when the executable path setting changes
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((e) => {
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
       if (e.affectsConfiguration(`${CONFIG_SECTION}.trace.server`)) {
         applyTraceFromConfig();
+      }
+      if (e.affectsConfiguration(`${CONFIG_SECTION}.nushellExecutablePath`)) {
+        const nushellPath = await nushell();
+        if (nushellPath) {
+          await restartLanguageServer(context, nushellPath);
+        }
       }
     }),
   );
@@ -260,8 +230,9 @@ export function activate(context: vscode.ExtensionContext) {
   // Commands are registered before the server starts so they keep working
   // even when nushell was not found at activation time.
   context.subscriptions.push(
-    vscode.commands.registerCommand('nushell.startLanguageServer', () => {
-      if (startLanguageServer(context)) {
+    vscode.commands.registerCommand('nushell.startLanguageServer', async () => {
+      const nushellPath = await nushell();
+      if (nushellPath && startLanguageServer(context, nushellPath)) {
         void vscode.window.showInformationMessage(
           'Nushell Language Server started.',
         );
@@ -303,8 +274,12 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // Start the language server when the extension is activated
-  startLanguageServer(context);
+  // Start the language server once a `nu` is available
+  void nushell().then((nushellPath) => {
+    if (nushellPath) {
+      startLanguageServer(context, nushellPath);
+    }
+  });
 }
 
 export function deactivate(): Thenable<void> | undefined {
