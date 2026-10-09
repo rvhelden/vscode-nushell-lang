@@ -108,7 +108,27 @@
           "scope": "resource",
           "type": "string",
           "default": "nu",
-          "description": "The path to the nushell executable."
+          "description": "Path to the `nu` executable used by the language server, the terminal profile and the debugger. When left at `nu`, the extension uses `nu` from PATH."
+        },
+        "nushellDebugger.restartOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hot restart: automatically restart the active Nushell debug session when you save the script being debugged. Auto-saves are ignored. The script re-runs from disk with breakpoints intact (state resets; side effects run again)."
+        },
+        "nushellDebugger.timeTravel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Time-travel debugging: record execution history so Step Back / Reverse Continue can revisit any line the script ran through (not just breakpoints). Records a lightweight state snapshot per line; turn off to record only at stops if a very hot loop makes recording costly."
+        },
+        "nushellDebugger.timeTravelMaxSteps": {
+          "type": "number",
+          "default": 10000,
+          "description": "Maximum number of recorded steps kept for time travel (a ring buffer). Older steps are dropped once the limit is reached, so Reverse can go back at most this many steps."
+        },
+        "nushellDebugger.trace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log every Debug Adapter Protocol message between VS Code and `nu --dap` to the \"Nushell Debug\" output channel. Useful when a debug session hangs: the request without a response shows what the adapter is stuck on. Applies to sessions started after changing it."
         }
       }
     },
