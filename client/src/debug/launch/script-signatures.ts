@@ -5,12 +5,10 @@
 // come from nushell's own parser: `ast --json` parses the script (nothing is
 // evaluated) and describes every top-level command with its signature.
 
-import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { promisify } from 'util';
 
-const execFileAsync = promisify(execFile);
+import { runNu } from '../shared/run-nu';
 
 /** A top-level `def` in a script. */
 export interface NuDefinition {
@@ -32,22 +30,12 @@ export async function readDefinitions(
 ): Promise<NuDefinition[] | undefined> {
   try {
     const source = await fs.readFile(program, 'utf8');
-    const parse = execFileAsync(
+    const stdout = await runNu(
       nu,
-      [
-        '--no-config-file',
-        '--stdin',
-        '-c',
-        'ast --json --minify $in | get block',
-      ],
-      {
-        cwd: path.dirname(program), // so `use ./lib.nu` resolves
-        timeout: 10000,
-        maxBuffer: 256 * 1024 * 1024, // the AST is far bigger than the source
-      },
+      'ast --json --minify $in | get block',
+      source,
+      path.dirname(program), // so `use ./lib.nu` resolves
     );
-    parse.child.stdin?.end(source);
-    const { stdout } = await parse;
     return definitionsFromAst(JSON.parse(stdout));
   } catch {
     return undefined;
