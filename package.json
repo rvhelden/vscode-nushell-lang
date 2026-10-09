@@ -151,7 +151,8 @@
       },
       {
         "command": "nushell-debug.showIr",
-        "title": "Nushell Debug: Show IR"
+        "title": "Nushell Debug: Show IR",
+        "icon": "$(file-binary)"
       },
       {
         "command": "nushell-debug.visualizeVariable",
@@ -239,6 +240,13 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "nushell-debug.showIr",
+          "when": "editorLangId == nushell",
+          "group": "navigation"
+        }
+      ],
       "debug/variables/context": [
         {
           "command": "nushell-debug.visualizeVariable",
