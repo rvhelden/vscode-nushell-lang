@@ -2,7 +2,7 @@
 // TypeScript under client/src/debug/, into out/debug/. The extension is bundled
 // into out/extension.js, so the panels load them from there (see
 // client/src/debug/shared/assets.ts). Webview scripts are not copied: esbuild
-// bundles client/src/debug/visualize/webview/main.ts (see package.json).
+// bundles each panel's webview/main.ts (see package.json).
 const fs = require('fs');
 const path = require('path');
 

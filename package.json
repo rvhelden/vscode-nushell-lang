@@ -155,6 +155,11 @@
         "icon": "$(file-binary)"
       },
       {
+        "command": "nushell-debug.showAst",
+        "title": "Nushell Debug: Show AST",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "nushell-debug.visualizeVariable",
         "title": "Visualize"
       }
@@ -245,6 +250,11 @@
           "command": "nushell-debug.showIr",
           "when": "editorLangId == nushell",
           "group": "navigation"
+        },
+        {
+          "command": "nushell-debug.showAst",
+          "when": "editorLangId == nushell",
+          "group": "navigation"
         }
       ],
       "debug/variables/context": [
@@ -265,7 +275,7 @@
     "vscode:prepublish": "npm run lint && npm run compile",
     "esbuild-base": "npx esbuild client/src/extension.ts --bundle --outdir=out --external:vscode --format=cjs --platform=node",
     "esbuild": "npm run esbuild-base -- --sourcemap --minify",
-    "esbuild-webview": "npx esbuild client/src/debug/visualize/webview/main.ts --bundle --format=iife --target=es2022 --minify --outfile=out/debug/visualize-panel.webview.js",
+    "esbuild-webview": "npx esbuild visualize-panel.webview=client/src/debug/visualize/webview/main.ts ast-panel.webview=client/src/debug/ast/webview/main.ts ast-graph.webview=client/src/debug/ast/webview/graph-main.ts --bundle --format=iife --target=es2022 --minify --outdir=out/debug",
     "copy-assets": "node ./scripts/copy-debug-assets.js",
     "compile": "npm run esbuild && npm run esbuild-webview && npm run copy-assets",
     "install": "cd client && npm install && cd ..",

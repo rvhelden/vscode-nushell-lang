@@ -1,6 +1,7 @@
 import { Disposable } from 'vscode';
 
 import * as adapter from './adapter/register';
+import * as ast from './ast/register';
 import { NushellResolver } from './adapter/descriptor-factory';
 import * as ir from './ir/register';
 import * as launch from './launch/register';
@@ -27,6 +28,7 @@ export function registerDebugger(
     ...prompts.register(),
     ...visualize.register(),
     ...ir.register(),
+    ...ast.register(),
     ...restart.register(),
     ...trace.register(),
   ];
