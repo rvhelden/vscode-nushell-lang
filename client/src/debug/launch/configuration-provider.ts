@@ -5,6 +5,7 @@ import { resolveNushell } from '../../nushell/resolve';
 import { DEBUG_TYPE } from '../shared/debug-type';
 import { isNuDocument } from '../shared/nu-document';
 import { resolveEntryPoint } from './entry-point';
+import { resolveLaunchPaths } from './launch-paths';
 
 export class LaunchConfigurationProvider
   implements vscode.DebugConfigurationProvider
@@ -40,34 +41,15 @@ export class LaunchConfigurationProvider
       return config;
     }
 
-    config.program = absoluteProgram(folder, config);
+    const paths = resolveLaunchPaths(
+      folder?.uri.fsPath,
+      config.program,
+      config.cwd,
+    );
+    config.program = paths.program;
+    config.cwd = paths.cwd;
     return await resolveEntryPoint(config, config.program, quietNushell());
   }
-}
-
-/**
- * `program: "scripts/tool.nu"` is relative to the script's working directory,
- * not to the extension host's — resolve it so both we and the adapter read
- * the right file.
- */
-function absoluteProgram(
-  folder: vscode.WorkspaceFolder | undefined,
-  config: vscode.DebugConfiguration,
-): string {
-  const program: string = config.program;
-  if (path.isAbsolute(program)) {
-    return program;
-  }
-
-  // `cwd` may itself be relative to the workspace folder.
-  const bases = [folder?.uri.fsPath, config.cwd].filter(
-    (base): base is string => typeof base === 'string' && base !== '',
-  );
-  if (bases.length === 0) {
-    return program; // nothing to anchor it to: let the adapter report it
-  }
-
-  return path.resolve(...bases, program);
 }
 
 /**

@@ -10,16 +10,10 @@ import {
   window,
 } from 'vscode';
 
-import {
-  NUSHELL_DOWNLOAD_PAGE,
-  compareVersions,
-  parseNuVersion,
-} from '../../nushell/version';
+import { NUSHELL_DOWNLOAD_PAGE, parseNuVersion } from '../../nushell/version';
+import { DapSupport, MIN_DAP_VERSION } from './dap-support';
 
 const execFileAsync = promisify(execFile);
-
-/** The first Nushell release that ships `nu --dap`. */
-export const MIN_DAP_VERSION = '0.116.0';
 
 /** Finds the `nu` to run; undefined when there is none, after telling the user. */
 export type NushellResolver = () => Promise<string | undefined>;
@@ -31,8 +25,7 @@ export type NushellResolver = () => Promise<string | undefined>;
  * uses) and spawn it.
  */
 export class AdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
-  /** `nu` paths already known to support `--dap`. */
-  private readonly supported = new Set<string>();
+  private readonly dapSupport = new DapSupport(nuVersion);
   private readonly resolveNushell: NushellResolver;
 
   constructor(resolveNushell: NushellResolver) {
@@ -55,30 +48,17 @@ export class AdapterDescriptorFactory implements DebugAdapterDescriptorFactory {
   }
 
   /**
-   * Compares `nu --version` against {@link MIN_DAP_VERSION}; nightlies report
-   * the upcoming release (e.g. `0.116.0-nightly.3`), so they pass too. Not
-   * cached on failure: the user may upgrade `nu` before the next launch.
-   *
    * A too old `nu` cancels the launch and offers the Nushell download page.
    * VS Code doesn't show an error for a cancelled launch, so this is the only
    * message the user sees.
    */
   private async checkDapSupport(nu: string): Promise<void> {
-    if (this.supported.has(nu)) {
+    const support = await this.dapSupport.check(nu);
+    if (support.kind !== 'too-old') {
       return;
     }
 
-    const version = await nuVersion(nu);
-    if (!version) {
-      return; // could not ask: let `nu --dap` speak for itself
-    }
-
-    if (compareVersions(version, MIN_DAP_VERSION) >= 0) {
-      this.supported.add(nu);
-      return;
-    }
-
-    void offerDownloadPage(nu, version);
+    void offerDownloadPage(nu, support.version);
     throw new CancellationError();
   }
 }

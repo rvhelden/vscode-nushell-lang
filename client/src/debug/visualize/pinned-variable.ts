@@ -6,6 +6,7 @@ import {
   updateVisualizePanel,
 } from './visualize-panel';
 import { LOCALS_REFERENCE, fetchVisualize } from './visualize-request';
+import { invalidateRequests, nextRequest } from './request-generation';
 
 // Live tracking for the visualize panel.
 //
@@ -16,21 +17,17 @@ import { LOCALS_REFERENCE, fetchVisualize } from './visualize-request';
 
 let pinnedName: string | undefined;
 
-/**
- * Bumped per refresh and per pin change; a response that is not from the
- * latest refresh, or that arrives after the user picked another value, is
- * discarded.
- */
-let generation = 0;
+// A pin change invalidates in-flight requests: a response that arrives after
+// the user picked another value is discarded.
 
 export function pinVariable(name: string): void {
   pinnedName = name;
-  generation++;
+  invalidateRequests();
 }
 
 export function unpinVariable(): void {
   pinnedName = undefined;
-  generation++;
+  invalidateRequests();
 }
 
 /** Re-read the pinned variable and repaint the visualize panel. */
@@ -46,19 +43,19 @@ export async function refreshPinnedVariable(
     return;
   }
 
-  const mine = ++generation;
+  const isCurrent = nextRequest();
   try {
     const body = await fetchVisualize(session, {
       containerReference: LOCALS_REFERENCE,
       name,
     });
-    if (mine !== generation) {
+    if (!isCurrent()) {
       return; // a later stop or a new pick superseded this answer
     }
 
     updateVisualizePanel(name, body);
   } catch {
-    if (mine !== generation) {
+    if (!isCurrent()) {
       return;
     }
 

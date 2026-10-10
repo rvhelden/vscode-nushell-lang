@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { activeNuSession } from '../shared/session';
 import { pinVariable, unpinVariable } from './pinned-variable';
+import { showLatest } from './request-generation';
 import { openVisualizePanel } from './visualize-panel';
 import {
   LOCALS_REFERENCE,
@@ -55,8 +56,13 @@ export async function visualizeVariable(
   }
 
   try {
-    const body = await fetchVisualize(session, address);
-    openVisualizePanel(variable.name, body);
+    const shown = await showLatest(
+      () => fetchVisualize(session, address),
+      (body) => openVisualizePanel(variable.name, body),
+    );
+    if (shown === 'stale') {
+      return; // the user picked another value meanwhile
+    }
   } catch (e) {
     void vscode.window.showWarningMessage(
       `Nushell Debug: cannot visualize '${variable.name}': ${String(e)}`,

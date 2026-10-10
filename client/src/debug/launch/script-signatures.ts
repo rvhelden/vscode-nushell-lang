@@ -114,9 +114,25 @@ function definitionFromCall(call: unknown): NuDefinition | undefined {
 
   return {
     name,
-    signature: typeof written === 'string' ? written.slice(1, -1) : '',
+    signature: typeof written === 'string' ? parameterList(written) : '',
     hasRequired: required.length > 0,
   };
+}
+
+/**
+ * The parameter list inside a Signature's source text, without its brackets.
+ */
+export function parameterList(written: string): string {
+  return written.slice(1, -1);
+}
+
+/** Prompt for arguments when the entry point requires some and the launch config has none. */
+export function needsArgumentPrompt(def: NuDefinition, args: unknown): boolean {
+  if (args !== undefined) {
+    return false;
+  }
+
+  return def.hasRequired;
 }
 
 function field(value: unknown, key: string): unknown {

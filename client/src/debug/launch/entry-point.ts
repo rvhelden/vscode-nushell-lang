@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 
 import { promptArgs } from './argument-prompt';
-import { NuDefinition, readDefinitions } from './script-signatures';
+import {
+  NuDefinition,
+  needsArgumentPrompt,
+  readDefinitions,
+} from './script-signatures';
 
 /** The extra entry in the entry-point picker: don't call a command, just run the file. */
 const RUN_TOP_TO_BOTTOM = '▶ Run script top-to-bottom';
@@ -89,11 +93,7 @@ async function ensureArgs(
   config: vscode.DebugConfiguration,
   def: NuDefinition,
 ): Promise<vscode.DebugConfiguration | undefined> {
-  if (config.args !== undefined) {
-    return config;
-  }
-
-  if (!def.hasRequired) {
+  if (!needsArgumentPrompt(def, config.args)) {
     return config;
   }
 

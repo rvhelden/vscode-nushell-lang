@@ -16,11 +16,13 @@ import {
 
 import { registerDebugger } from './debug/register';
 import { ensureNushell } from './nushell/resolve';
+import { ServerRestarter } from './nushell/server-restart';
 
 const EXTENSION_ID = 'TheNuProjectContributors.vscode-nushell-lang';
 const CONFIG_SECTION = 'nushellLanguageServer';
 
 let client: LanguageClient | undefined;
+let clientNushellPath: string | undefined; // the `nu` that `client` runs
 let fileWatcher: vscode.FileSystemWatcher | undefined;
 let outputChannel: OutputChannel | undefined; // Single output channel for server logs and trace
 
@@ -116,6 +118,7 @@ function startLanguageServer(
     clientOptions,
   );
   client = newClient;
+  clientNushellPath = nushellPath;
 
   // Log client lifecycle
   newClient.onDidChangeState((e) => {
@@ -134,6 +137,7 @@ function startLanguageServer(
     // Leave things in a state where "Nushell: Start Language Server" can retry.
     if (client === newClient) {
       client = undefined;
+      clientNushellPath = undefined;
     }
     fileWatcher?.dispose();
     fileWatcher = undefined;
@@ -148,6 +152,7 @@ async function stopLanguageServer(): Promise<boolean> {
   }
   const running = client;
   client = undefined;
+  clientNushellPath = undefined;
   fileWatcher?.dispose();
   fileWatcher = undefined;
   try {
@@ -211,18 +216,25 @@ export function activate(context: vscode.ExtensionContext) {
   // The debugger resolves `nu` itself when a session starts
   context.subscriptions.push(...registerDebugger(nushell));
 
+  const restarter = new ServerRestarter(
+    {
+      isRunning: () => client !== undefined,
+      runningPath: () => clientNushellPath,
+      resolve: ensureNushell,
+      restart: (nushellPath) => restartLanguageServer(context, nushellPath),
+    },
+    500, // the Settings UI writes the path on every keystroke
+  );
+
   // React to trace level changes for the lifetime of the extension, and
   // restart the language server when the executable path setting changes
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration(async (e) => {
+    vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration(`${CONFIG_SECTION}.trace.server`)) {
         applyTraceFromConfig();
       }
       if (e.affectsConfiguration(`${CONFIG_SECTION}.nushellExecutablePath`)) {
-        const nushellPath = await nushell();
-        if (nushellPath) {
-          await restartLanguageServer(context, nushellPath);
-        }
+        restarter.schedule();
       }
     }),
   );
